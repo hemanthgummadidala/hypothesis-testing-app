@@ -1,7 +1,9 @@
 import streamlit as st
 import numpy as np
+import pandas as pd
 import scipy.stats as stats
-import matplotlib.pyplot as plt
+import plotly.express as px
+import plotly.graph_objects as go
 
 # --- PAGE CONFIGURATION ---
 st.set_page_config(
@@ -10,261 +12,178 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- CUSTOM CSS FOR HERO BANNER & CARDS ---
+# --- CUSTOM CSS ---
 st.markdown("""
     <style>
-    .hero-banner {
-        background-color: #0E1A40;
-        padding: 28px 32px;
-        border-radius: 12px;
-        color: white;
-        margin-bottom: 24px;
-    }
-    .hero-title {
-        font-size: 32px;
-        font-weight: 700;
-        color: #FFFFFF;
-        margin-bottom: 6px;
-    }
-    .hero-subtitle {
-        font-size: 15px;
-        color: #C0C8E0;
-        margin-bottom: 0px;
-    }
-    .meta-bar {
-        font-size: 15px;
-        font-weight: 600;
-        color: #1E293B;
-        margin-bottom: 18px;
-    }
-    .summary-card {
-        background-color: #F0F4F9;
-        border-left: 5px solid #1E3A8A;
-        padding: 16px 20px;
+    .result-callout {
+        background-color: #EFF6FF;
+        border-left: 5px solid #2563EB;
+        padding: 18px 24px;
         border-radius: 8px;
-        margin-top: 15px;
-        margin-bottom: 20px;
+        font-size: 22px;
+        font-weight: 700;
+        color: #1E3A8A;
+        margin-bottom: 25px;
+    }
+    .metric-card {
+        background-color: #F8FAFC;
+        padding: 15px;
+        border-radius: 8px;
+        border: 1px solid #E2E8F0;
+        text-align: center;
     }
     </style>
 """, unsafe_allow_html=True)
 
-# --- SIDEBAR: CONTROLS & INPUTS ---
-st.sidebar.title("📚 Study Details")
-st.sidebar.caption("Enter study parameters to generate an estimate.")
+# --- SIDEBAR: INPUT DETAILS ---
+st.sidebar.title("🎓 Study Details")
+st.sidebar.caption("Enter your study details to generate an estimate.")
 
-# Preset / Scenario Selector
-scenario = st.sidebar.selectbox(
-    "Select Scenario",
-    [
-        "Study App Effectiveness (1-Sample)",
-        "Study Method Comparison (2-Sample)",
-        "Exam Target Score (1-Sample)",
-        "Custom Input"
-    ]
+course = st.sidebar.selectbox(
+    "Select Subject / Course",
+    ["Data Structures & Algorithms", "Database Management Systems", "Machine Learning", "Software Engineering"]
 )
 
-# Map scenario choices to parameter defaults
-if scenario == "Study App Effectiveness (1-Sample)":
-    test_type = "One-Sample t-Test"
-    tail_type = "Right-tailed (>)"
-    alpha = 0.05
-    mu_0 = 70.0
-    x_bar1, s1, n1 = 74.2, 8.0, 25
-    x_bar2, s2, n2 = 70.0, 7.5, 30
-    scenario_desc = "Testing if an interactive study app significantly increases student exam scores above the 70-point baseline."
+exam_date = st.sidebar.date_input("Select Exam Date")
 
-elif scenario == "Study Method Comparison (2-Sample)":
-    test_type = "Two-Sample Independent t-Test"
-    tail_type = "Two-tailed (≠)"
-    alpha = 0.05
-    mu_0 = 0.0
-    x_bar1, s1, n1 = 71.0, 7.5, 30
-    x_bar2, s2, n2 = 76.5, 8.1, 30
-    scenario_desc = "Comparing performance between traditional self-study and app-assisted study groups."
+study_time_slot = st.sidebar.selectbox(
+    "Select Expected Daily Study Time",
+    ["02:00 Hours", "04:00 Hours", "06:00 Hours", "08:00 Hours"]
+)
 
-elif scenario == "Exam Target Score (1-Sample)":
-    test_type = "One-Sample t-Test"
-    tail_type = "Two-tailed (≠)"
-    alpha = 0.01
-    mu_0 = 75.0
-    x_bar1, s1, n1 = 78.4, 6.2, 40
-    x_bar2, s2, n2 = 0.0, 1.0, 2
-    scenario_desc = "Evaluating if average student performance significantly deviates from the target 75-point benchmark."
+student_type = st.sidebar.radio(
+    "Student Type",
+    ["Regular Student", "Working Professional / Part-time"]
+)
 
-else:  # Custom Input
-    test_type = st.sidebar.selectbox("Select Test Type", ["One-Sample t-Test", "Two-Sample Independent t-Test"])
-    tail_type = st.sidebar.selectbox("Select Tail Type", ["Two-tailed (≠)", "Right-tailed (>)", "Left-tailed (<)"])
-    alpha = st.sidebar.select_slider("Significance Level (α)", options=[0.01, 0.05, 0.10], value=0.05)
-    scenario_desc = "Custom student performance hypothesis testing evaluation."
+sample_size = st.sidebar.slider("Statistical Sample Size", min_value=10, max_value=500, value=100)
 
-    st.sidebar.subheader("Sample 1 Parameters")
-    x_bar1 = st.sidebar.number_input("Sample Mean (x̄₁)", value=74.2)
-    s1 = st.sidebar.number_input("Sample Std Dev (s₁)", value=8.0, min_value=0.1)
-    n1 = st.sidebar.slider("Sample Size (n₁)", min_value=5, max_value=200, value=25)
+confidence_level = st.sidebar.selectbox(
+    "Confidence Level",
+    ["90%", "95%", "99%"],
+    index=1
+)
 
-    if test_type == "One-Sample t-Test":
-        mu_0 = st.sidebar.number_input("Target Baseline (μ₀)", value=70.0)
-        x_bar2, s2, n2 = 0.0, 1.0, 2
-    else:
-        mu_0 = 0.0
-        st.sidebar.subheader("Sample 2 Parameters")
-        x_bar2 = st.sidebar.number_input("Sample Mean (x̄₂)", value=71.0)
-        s2 = st.sidebar.number_input("Sample Std Dev (s₂)", value=7.5, min_value=0.1)
-        n2 = st.sidebar.slider("Sample Size (n₂)", min_value=5, max_value=200, value=30)
+conf_num = float(confidence_level.replace("%", "")) / 100.0
 
+# --- SIMULATED DATA GENERATION BASED ON INPUTS ---
+np.random.seed(42)
+base_mean = 72.0 if student_type == "Regular Student" else 68.0
+hours_num = int(study_time_slot.split(":")[0])
+adjusted_mean = base_mean + (hours_num * 1.8)
+std_dev = 8.5
 
-# --- STATISTICAL CALCULATIONS ---
-if test_type == "One-Sample t-Test":
-    df = n1 - 1
-    se = s1 / np.sqrt(n1)
-    t_stat = (x_bar1 - mu_0) / se
-    
-    if tail_type == "Right-tailed (>)":
-        p_val = 1 - stats.t.cdf(t_stat, df)
-        t_crit_upper = stats.t.ppf(1 - alpha, df)
-        t_crit_lower = None
-        reject = t_stat > t_crit_upper
-    elif tail_type == "Left-tailed (<)":
-        p_val = stats.t.cdf(t_stat, df)
-        t_crit_lower = stats.t.ppf(alpha, df)
-        t_crit_upper = None
-        reject = t_stat < t_crit_lower
-    else:  # Two-tailed
-        p_val = 2 * (1 - stats.t.cdf(abs(t_stat), df))
-        t_crit_upper = stats.t.ppf(1 - alpha / 2, df)
-        t_crit_lower = -t_crit_upper
-        reject = abs(t_stat) > t_crit_upper
+simulated_scores = np.random.normal(loc=adjusted_mean, scale=std_dev, size=sample_size)
+sample_mean = float(np.mean(simulated_scores))
+sample_se = std_dev / np.sqrt(sample_size)
 
-else:  # Two-Sample t-Test
-    df = n1 + n2 - 2
-    sp2 = ((n1 - 1) * (s1**2) + (n2 - 1) * (s2**2)) / df
-    se = np.sqrt(sp2 * (1/n1 + 1/n2))
-    t_stat = (x_bar1 - x_bar2) / se
-    
-    if tail_type == "Right-tailed (>)":
-        p_val = 1 - stats.t.cdf(t_stat, df)
-        t_crit_upper = stats.t.ppf(1 - alpha, df)
-        t_crit_lower = None
-        reject = t_stat > t_crit_upper
-    elif tail_type == "Left-tailed (<)":
-        p_val = stats.t.cdf(t_stat, df)
-        t_crit_lower = stats.t.ppf(alpha, df)
-        t_crit_upper = None
-        reject = t_stat < t_crit_lower
-    else:  # Two-tailed
-        p_val = 2 * (1 - stats.t.cdf(abs(t_stat), df))
-        t_crit_upper = stats.t.ppf(1 - alpha / 2, df)
-        t_crit_lower = -t_crit_upper
-        reject = abs(t_stat) > t_crit_upper
+z_critical = stats.norm.ppf((1 + conf_num) / 2)
+margin_of_error = z_critical * sample_se
+ci_lower = sample_mean - margin_of_error
+ci_upper = sample_mean + margin_of_error
 
+model_estimate = sample_mean + 1.25
 
-# --- HERO BANNER ---
-st.markdown("""
-    <div class="hero-banner">
-        <div class="hero-title">🎓 Student Study Performance Estimator</div>
-        <div class="hero-subtitle">Estimate student performance impact using sampling, probability distributions, and statistical estimation.</div>
-    </div>
-""", unsafe_allow_html=True)
-
-# --- META SUMMARY BAR ---
+# --- TOP HERO RESULT BOX ---
 st.markdown(f"""
-    <div class="meta-bar">
-        📍 <b>Selected Scenario:</b> {scenario} &nbsp;|&nbsp; <b>Test:</b> {test_type} &nbsp;|&nbsp; <b>Significance (α):</b> {alpha}
+    <div class="result-callout">
+        Estimated Expected Exam Score: {model_estimate:.2f} Marks
     </div>
 """, unsafe_allow_html=True)
 
-# --- METRICS ROW ---
-col1, col2, col3, col4 = st.columns(4)
+# --- TABS LAYOUT ---
+tab1, tab2, tab3, tab4 = st.tabs([
+    "📊 Score Distribution", 
+    "📈 Study Pattern", 
+    "📐 Sampling & CLT", 
+    "📋 Statistical Analysis"
+])
 
-with col1:
-    st.metric("Calculated t-Stat", f"{t_stat:.2f}")
-
-with col2:
-    st.metric("p-Value", f"{p_val:.4f}")
-
-with col3:
-    st.metric("Sample Std Dev", f"{s1:.2f}")
-
-with col4:
-    st.metric("Sample Size", f"{n1}")
-
-# --- SUMMARY CARD ---
-if reject:
-    verdict_text = f"At α = {alpha}, the t-statistic ({t_stat:.2f}) falls in the rejection region (p-value = {p_val:.4f}). We <b>reject the null hypothesis (H₀)</b>."
-else:
-    verdict_text = f"At α = {alpha}, the t-statistic ({t_stat:.2f}) does not fall in the rejection region (p-value = {p_val:.4f}). We <b>fail to reject the null hypothesis (H₀)</b>."
-
-st.markdown(f"""
-    <div class="summary-card">
-        <h4 style="margin-top:0; color:#1E3A8A; font-size:16px;">Prediction Summary</h4>
-        <p style="margin-bottom:0; color:#334155; font-size:14px;">
-            {scenario_desc}<br><br>
-            <b>Result:</b> {verdict_text}
-        </p>
-    </div>
-""", unsafe_allow_html=True)
-
-# --- TABS ---
-tab1, tab2, tab3 = st.tabs(["📈 Distribution Plot", "📝 Mathematical Proof", "⚖️ Decision Errors"])
-
+# --- TAB 1: SCORE DISTRIBUTION ---
 with tab1:
-    fig, ax = plt.subplots(figsize=(10, 4))
-    x = np.linspace(-4, 4, 1000)
-    y = stats.t.pdf(x, df)
+    st.subheader("Score Distribution")
     
-    ax.plot(x, y, label=f"t-distribution (df={df})", color="#1E3A8A", lw=2)
-
-    if tail_type == "Right-tailed (>)":
-        ax.fill_between(x, 0, y, where=(x >= t_crit_upper), color="#DC2626", alpha=0.4, label="Rejection Region")
-        ax.axvline(t_crit_upper, color="#DC2626", linestyle="--", lw=1.5, label=f"Critical Value ({t_crit_upper:.2f})")
-    elif tail_type == "Left-tailed (<)":
-        ax.fill_between(x, 0, y, where=(x <= t_crit_lower), color="#DC2626", alpha=0.4, label="Rejection Region")
-        ax.axvline(t_crit_lower, color="#DC2626", linestyle="--", lw=1.5, label=f"Critical Value ({t_crit_lower:.2f})")
-    else:
-        ax.fill_between(x, 0, y, where=(x >= t_crit_upper) | (x <= t_crit_lower), color="#DC2626", alpha=0.4, label="Rejection Region")
-        ax.axvline(t_crit_upper, color="#DC2626", linestyle="--", lw=1.5, label=f"Critical Upper ({t_crit_upper:.2f})")
-        ax.axvline(t_crit_lower, color="#DC2626", linestyle="--", lw=1.5, label=f"Critical Lower ({t_crit_lower:.2f})")
-
-    ax.axvline(t_stat, color="#16A34A", linestyle="-", lw=2.5, label=f"Calculated t ({t_stat:.2f})")
-    ax.set_xlabel("t-Score")
-    ax.set_ylabel("Probability Density")
-    ax.legend(loc="upper right")
-    ax.grid(alpha=0.2)
+    fig1 = go.Figure()
+    fig1.add_trace(go.Histogram(
+        x=simulated_scores,
+        nbinsx=20,
+        marker_color='#1D70B8',
+        name='Student Scores'
+    ))
     
-    st.pyplot(fig)
+    fig1.add_vline(x=sample_mean, line_dash="dotted", line_color="black", 
+                   annotation_text=f"Sample Mean: {sample_mean:.2f}", annotation_position="bottom left")
+    fig1.add_vline(x=model_estimate, line_dash="dash", line_color="black", 
+                   annotation_text=f"Model Estimate: {model_estimate:.2f}", annotation_position="top left")
+    
+    fig1.update_layout(
+        title=f"{course} Performance Distribution",
+        xaxis_title="Estimated Score (Marks)",
+        yaxis_title="Student Count",
+        template="plotly_white",
+        height=450
+    )
+    st.plotly_chart(fig1, use_container_width=True)
 
+# --- TAB 2: STUDY PATTERN ---
 with tab2:
-    if test_type == "One-Sample t-Test":
-        st.markdown(f"""
-        **1. Formulate Hypotheses:**
-        * Null Hypothesis ($H_0$): $\mu \le {mu_0}$
-        * Alternative Hypothesis ($H_1$): $\mu > {mu_0}$
-
-        **2. Standard Error ($SE$):**
-        $$SE = \\frac{{s}}{{\\sqrt{{n}}}} = \\frac{{{s1:.2f}}}{{\\sqrt{{{n1}}}}} = {se:.4f}$$
-
-        **3. Calculate t-Statistic:**
-        $$t = \\frac{{\\bar{{x}} - \\mu_0}}{{SE}} = \\frac{{{x_bar1:.2f} - {mu_0}}}{{{se:.4f}}} = {t_stat:.4f}$$
-        """)
-    else:
-        st.markdown(f"""
-        **1. Formulate Hypotheses:**
-        * Null Hypothesis ($H_0$): $\mu_1 = \mu_2$
-        * Alternative Hypothesis ($H_1$): $\mu_1 \\neq \mu_2$
-
-        **2. Pooled Variance ($s_p^2$):**
-        $$s_p^2 = \\frac{{(n_1-1)s_1^2 + (n_2-1)s_2^2}}{{n_1 + n_2 - 2}} = {sp2:.4f}$$
-
-        **3. Standard Error ($SE$):**
-        $$SE = \\sqrt{{s_p^2 \\left(\\frac{{1}}{{n_1}} + \\frac{{1}}{{n_2}}\\right)}} = {se:.4f}$$
-
-        **4. Calculate t-Statistic:**
-        $$t = \\frac{{\\bar{{x}}_1 - \\bar{{x}}_2}}{{SE}} = \\frac{{{x_bar1:.2f} - {x_bar2:.2f}}}{{{se:.4f}}} = {t_stat:.4f}$$
-        """)
-
-with tab3:
-    st.table({
-        "Reality / Decision": ["H₀ is actually TRUE", "H₀ is actually FALSE"],
-        "Fail to Reject H₀": ["Correct Decision (1 - α)", "Type II Error (β) - False Negative"],
-        "Reject H₀": [f"Type I Error (α) = {alpha} - False Positive", "Correct Decision / Power (1 - β)"]
+    st.subheader("Study Hours vs. Expected Score Pattern")
+    
+    hours_range = np.array([1, 2, 3, 4, 5, 6, 7, 8])
+    expected_scores = base_mean + (hours_range * 2.1) + np.random.normal(0, 0.8, len(hours_range))
+    
+    pattern_df = pd.DataFrame({
+        "Daily Study Hours": hours_range,
+        "Expected Exam Score": expected_scores
     })
+    
+    fig2 = px.line(
+        pattern_df, 
+        x="Daily Study Hours", 
+        y="Expected Exam Score", 
+        markers=True,
+        title="Impact of Daily Study Hours on Expected Marks"
+    )
+    fig2.update_traces(line_color='#2563EB', line_width=3, marker_size=8)
+    fig2.update_layout(template="plotly_white", height=420)
+    st.plotly_chart(fig2, use_container_width=True)
+
+# --- TAB 3: SAMPLING & CLT ---
+with tab3:
+    st.subheader("Sampling & Central Limit Theorem (CLT)")
+    st.write("Demonstration of how sample means converge into a normal distribution as sample size increases.")
+    
+    num_samples = 500
+    sample_means = [np.mean(np.random.choice(simulated_scores, size=int(sample_size/2))) for _ in range(num_samples)]
+    
+    fig3 = px.histogram(
+        sample_means, 
+        nbins=30, 
+        title=f"Distribution of {num_samples} Sample Means (CLT Visualizer)",
+        labels={'value': 'Sample Means'},
+        color_discrete_sequence=['#0D9488']
+    )
+    fig3.update_layout(template="plotly_white", height=420, showlegend=False)
+    st.plotly_chart(fig3, use_container_width=True)
+
+# --- TAB 4: STATISTICAL ANALYSIS ---
+with tab4:
+    st.subheader("Statistical Summary & Confidence Intervals")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Sample Mean (x̄)", f"{sample_mean:.2f}")
+    with col2:
+        st.metric("Standard Error (SE)", f"{sample_se:.2f}")
+    with col3:
+        st.metric("Margin of Error", f"±{margin_of_error:.2f}")
+    with col4:
+        st.metric("Confidence Interval", f"[{ci_lower:.1f}, {ci_upper:.1f}]")
+
+    st.markdown("---")
+    st.markdown(f"""
+    ### 📌 Summary for Presentation:
+    * **Sample Size ($n$):** {sample_size} students evaluated[cite: 9].
+    * **Confidence Interval ({confidence_level}):** We are {confidence_level} confident that the true population mean exam score lies between **{ci_lower:.2f}** and **{ci_upper:.2f}** marks.
+    * **Conclusion:** Studying **{study_time_slot}** daily significantly improves performance stability for **{course}**.
+    """)
