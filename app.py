@@ -111,10 +111,21 @@ with tab1:
         name='Student Scores'
     ))
     
-    fig1.add_vline(x=sample_mean, line_dash="dotted", line_color="black", 
-                   annotation_text=f"Sample Mean: {sample_mean:.2f}", annotation_position="bottom left")
-    fig1.add_vline(x=model_estimate, line_dash="dash", line_color="black", 
-                   annotation_text=f"Model Estimate: {model_estimate:.2f}", annotation_position="top left")
+    # Fixed annotation_position values to valid Plotly options
+    fig1.add_vline(
+        x=sample_mean, 
+        line_dash="dotted", 
+        line_color="black", 
+        annotation_text=f"Sample Mean: {sample_mean:.2f}", 
+        annotation_position="top left"
+    )
+    fig1.add_vline(
+        x=model_estimate, 
+        line_dash="dash", 
+        line_color="black", 
+        annotation_text=f"Model Estimate: {model_estimate:.2f}", 
+        annotation_position="top right"
+    )
     
     fig1.update_layout(
         title=f"{course} Performance Distribution",
@@ -183,7 +194,7 @@ with tab4:
     st.markdown("---")
     st.markdown(f"""
     ### 📌 Summary for Presentation:
-    * **Sample Size ($n$):** {sample_size} students evaluated[cite: 9].
+    * **Sample Size ($n$):** {sample_size} students evaluated.
     * **Confidence Interval ({confidence_level}):** We are {confidence_level} confident that the true population mean exam score lies between **{ci_lower:.2f}** and **{ci_upper:.2f}** marks.
     * **Conclusion:** Studying **{study_time_slot}** daily significantly improves performance stability for **{course}**.
     """)
