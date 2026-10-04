@@ -1,132 +1,119 @@
 import streamlit as st
 import numpy as np
-import pandas as pd
 import scipy.stats as stats
 import matplotlib.pyplot as plt
 
 # --- PAGE CONFIGURATION ---
 st.set_page_config(
-    page_title="Fundamentals of Hypothesis Testing",
-    page_icon="📊",
+    page_title="Student Study Performance Estimator",
+    page_icon="🎓",
     layout="wide"
 )
 
-# --- TITLE & DESCRIPTION ---
-st.title("📊 Fundamentals of Hypothesis Testing")
+# --- CUSTOM CSS FOR HERO BANNER & CARDS ---
 st.markdown("""
-An interactive statistical calculator and visualizer for **one-sample** and **two-sample** hypothesis testing.
-Choose manual inputs/presets or upload your own raw dataset CSV to calculate test statistics, critical values, $p$-values, and decision rules.
-""")
+    <style>
+    .hero-banner {
+        background-color: #0E1A40;
+        padding: 28px 32px;
+        border-radius: 12px;
+        color: white;
+        margin-bottom: 24px;
+    }
+    .hero-title {
+        font-size: 32px;
+        font-weight: 700;
+        color: #FFFFFF;
+        margin-bottom: 6px;
+    }
+    .hero-subtitle {
+        font-size: 15px;
+        color: #C0C8E0;
+        margin-bottom: 0px;
+    }
+    .meta-bar {
+        font-size: 15px;
+        font-weight: 600;
+        color: #1E293B;
+        margin-bottom: 18px;
+    }
+    .summary-card {
+        background-color: #F0F4F9;
+        border-left: 5px solid #1E3A8A;
+        padding: 16px 20px;
+        border-radius: 8px;
+        margin-top: 15px;
+        margin-bottom: 20px;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
-# --- SIDEBAR CONTROLS ---
-st.sidebar.header("⚙️ Data Input Method")
-input_mode = st.sidebar.radio("Select Input Source:", ["Manual Input / Presets", "Upload CSV File"])
+# --- SIDEBAR: CONTROLS & INPUTS ---
+st.sidebar.title("📚 Study Details")
+st.sidebar.caption("Enter study parameters to generate an estimate.")
 
-if input_mode == "Manual Input / Presets":
-    preset = st.sidebar.selectbox(
-        "Choose a Sample Scenario:",
-        ["Custom Input", "Study App Scores (1-Sample)", "Study Method Comparison (2-Sample)"]
-    )
+# Preset / Scenario Selector
+scenario = st.sidebar.selectbox(
+    "Select Scenario",
+    [
+        "Study App Effectiveness (1-Sample)",
+        "Study Method Comparison (2-Sample)",
+        "Exam Target Score (1-Sample)",
+        "Custom Input"
+    ]
+)
 
-    if preset == "Study App Scores (1-Sample)":
-        test_type = "One-Sample t-Test"
-        tail_type = "Right-tailed (>)"
-        alpha = 0.05
-        mu_0 = 70.0
-        x_bar1, s1, n1 = 74.2, 8.0, 25
-        x_bar2, s2, n2 = 70.0, 7.5, 30
-    elif preset == "Study Method Comparison (2-Sample)":
-        test_type = "Two-Sample Independent t-Test"
-        tail_type = "Two-tailed (≠)"
-        alpha = 0.05
+# Map scenario choices to parameter defaults
+if scenario == "Study App Effectiveness (1-Sample)":
+    test_type = "One-Sample t-Test"
+    tail_type = "Right-tailed (>)"
+    alpha = 0.05
+    mu_0 = 70.0
+    x_bar1, s1, n1 = 74.2, 8.0, 25
+    x_bar2, s2, n2 = 70.0, 7.5, 30
+    scenario_desc = "Testing if an interactive study app significantly increases student exam scores above the 70-point baseline."
+
+elif scenario == "Study Method Comparison (2-Sample)":
+    test_type = "Two-Sample Independent t-Test"
+    tail_type = "Two-tailed (≠)"
+    alpha = 0.05
+    mu_0 = 0.0
+    x_bar1, s1, n1 = 71.0, 7.5, 30
+    x_bar2, s2, n2 = 76.5, 8.1, 30
+    scenario_desc = "Comparing performance between traditional self-study and app-assisted study groups."
+
+elif scenario == "Exam Target Score (1-Sample)":
+    test_type = "One-Sample t-Test"
+    tail_type = "Two-tailed (≠)"
+    alpha = 0.01
+    mu_0 = 75.0
+    x_bar1, s1, n1 = 78.4, 6.2, 40
+    x_bar2, s2, n2 = 0.0, 1.0, 2
+    scenario_desc = "Evaluating if average student performance significantly deviates from the target 75-point benchmark."
+
+else:  # Custom Input
+    test_type = st.sidebar.selectbox("Select Test Type", ["One-Sample t-Test", "Two-Sample Independent t-Test"])
+    tail_type = st.sidebar.selectbox("Select Tail Type", ["Two-tailed (≠)", "Right-tailed (>)", "Left-tailed (<)"])
+    alpha = st.sidebar.select_slider("Significance Level (α)", options=[0.01, 0.05, 0.10], value=0.05)
+    scenario_desc = "Custom student performance hypothesis testing evaluation."
+
+    st.sidebar.subheader("Sample 1 Parameters")
+    x_bar1 = st.sidebar.number_input("Sample Mean (x̄₁)", value=74.2)
+    s1 = st.sidebar.number_input("Sample Std Dev (s₁)", value=8.0, min_value=0.1)
+    n1 = st.sidebar.slider("Sample Size (n₁)", min_value=5, max_value=200, value=25)
+
+    if test_type == "One-Sample t-Test":
+        mu_0 = st.sidebar.number_input("Target Baseline (μ₀)", value=70.0)
+        x_bar2, s2, n2 = 0.0, 1.0, 2
+    else:
         mu_0 = 0.0
-        x_bar1, s1, n1 = 71.0, 7.5, 30
-        x_bar2, s2, n2 = 76.5, 8.1, 30
-    else:
-        test_type = st.sidebar.selectbox("Select Test Type:", ["One-Sample t-Test", "Two-Sample Independent t-Test"])
-        tail_type = st.sidebar.selectbox("Select Tail Type:", ["Two-tailed (≠)", "Right-tailed (>)", "Left-tailed (<)"])
-        alpha = st.sidebar.slider("Significance Level (α):", 0.01, 0.10, 0.05, step=0.01)
-        
-        st.sidebar.subheader("Sample 1 Data")
-        x_bar1 = st.sidebar.number_input("Sample Mean (x̄₁):", value=74.2)
-        s1 = st.sidebar.number_input("Sample Std Dev (s₁):", value=8.0, min_value=0.1)
-        n1 = st.sidebar.number_input("Sample Size (n₁):", value=25, min_value=2, step=1)
-        
-        if test_type == "One-Sample t-Test":
-            mu_0 = st.sidebar.number_input("Null Target (μ₀):", value=70.0)
-            x_bar2, s2, n2 = 0.0, 1.0, 2
-        else:
-            mu_0 = 0.0
-            st.sidebar.subheader("Sample 2 Data")
-            x_bar2 = st.sidebar.number_input("Sample Mean (x̄₂):", value=71.0)
-            s2 = st.sidebar.number_input("Sample Std Dev (s₂):", value=7.5, min_value=0.1)
-            n2 = st.sidebar.number_input("Sample Size (n₂):", value=30, min_value=2, step=1)
+        st.sidebar.subheader("Sample 2 Parameters")
+        x_bar2 = st.sidebar.number_input("Sample Mean (x̄₂)", value=71.0)
+        s2 = st.sidebar.number_input("Sample Std Dev (s₂)", value=7.5, min_value=0.1)
+        n2 = st.sidebar.slider("Sample Size (n₂)", min_value=5, max_value=200, value=30)
 
-else:  # Upload CSV File Mode
-    st.sidebar.subheader("📁 File Upload")
-    
-    # Sample CSV Generator & Download Button
-    @st.cache_data
-    def convert_df_to_csv(df):
-        return df.to_csv(index=False).encode('utf-8')
 
-    sample_df = pd.DataFrame({
-        "Control_Group_Scores": [68, 72, 65, 74, 70, 71, 69, 73, 67, 75, 70, 68, 72, 71, 69],
-        "App_Group_Scores":     [75, 80, 78, 82, 76, 79, 77, 81, 74, 83, 78, 76, 80, 79, 77]
-    })
-    
-    st.sidebar.download_button(
-        label="📥 Download Sample CSV",
-        data=convert_df_to_csv(sample_df),
-        file_name="hypothesis_sample_data.csv",
-        mime="text/csv",
-        help="Download sample data to try out the file uploader."
-    )
-    
-    uploaded_file = st.sidebar.file_uploader("Upload CSV File", type=["csv"])
-    
-    if uploaded_file is not None:
-        df_raw = pd.read_csv(uploaded_file)
-        st.sidebar.success("File uploaded successfully!")
-        
-        test_type = st.sidebar.selectbox("Select Test Type:", ["One-Sample t-Test", "Two-Sample Independent t-Test"])
-        tail_type = st.sidebar.selectbox("Select Tail Type:", ["Two-tailed (≠)", "Right-tailed (>)", "Left-tailed (<)"])
-        alpha = st.sidebar.slider("Significance Level (α):", 0.01, 0.10, 0.05, step=0.01)
-        
-        numeric_cols = df_raw.select_dtypes(include=[np.number]).columns.tolist()
-        
-        if len(numeric_cols) == 0:
-            st.error("No numeric columns found in the uploaded CSV file.")
-            st.stop()
-            
-        if test_type == "One-Sample t-Test":
-            col1 = st.sidebar.selectbox("Select Column for Sample 1:", numeric_cols)
-            mu_0 = st.sidebar.number_input("Null Target Mean (μ₀):", value=70.0)
-            
-            data1 = df_raw[col1].dropna()
-            x_bar1, s1, n1 = data1.mean(), data1.std(ddof=1), len(data1)
-            x_bar2, s2, n2 = 0.0, 1.0, 2
-            
-        else:  # Two-Sample t-Test
-            col1 = st.sidebar.selectbox("Select Column for Sample 1:", numeric_cols, index=0)
-            col2_default = 1 if len(numeric_cols) > 1 else 0
-            col2 = st.sidebar.selectbox("Select Column for Sample 2:", numeric_cols, index=col2_default)
-            mu_0 = 0.0
-            
-            data1 = df_raw[col1].dropna()
-            data2 = df_raw[col2].dropna()
-            
-            x_bar1, s1, n1 = data1.mean(), data1.std(ddof=1), len(data1)
-            x_bar2, s2, n2 = data2.mean(), data2.std(ddof=1), len(data2)
-
-        with st.expander("👀 View Uploaded Dataset Preview"):
-            st.dataframe(df_raw.head())
-
-    else:
-        st.info("👈 Upload a CSV file or download the sample dataset above to test.")
-        st.stop()
-
-# --- CALCULATIONS ENGINE ---
+# --- STATISTICAL CALCULATIONS ---
 if test_type == "One-Sample t-Test":
     df = n1 - 1
     se = s1 / np.sqrt(n1)
@@ -170,50 +157,83 @@ else:  # Two-Sample t-Test
         t_crit_lower = -t_crit_upper
         reject = abs(t_stat) > t_crit_upper
 
-# --- MAIN DASHBOARD TABS ---
-tab1, tab2, tab3 = st.tabs(["📊 Results & Visualization", "📝 Step-by-Step Proof", "⚖️ Decision Error Matrix"])
+
+# --- HERO BANNER ---
+st.markdown("""
+    <div class="hero-banner">
+        <div class="hero-title">🎓 Student Study Performance Estimator</div>
+        <div class="hero-subtitle">Estimate student performance impact using sampling, probability distributions, and statistical estimation.</div>
+    </div>
+""", unsafe_allow_html=True)
+
+# --- META SUMMARY BAR ---
+st.markdown(f"""
+    <div class="meta-bar">
+        📍 <b>Selected Scenario:</b> {scenario} &nbsp;|&nbsp; <b>Test:</b> {test_type} &nbsp;|&nbsp; <b>Significance (α):</b> {alpha}
+    </div>
+""", unsafe_allow_html=True)
+
+# --- METRICS ROW ---
+col1, col2, col3, col4 = st.columns(4)
+
+with col1:
+    st.metric("Calculated t-Stat", f"{t_stat:.2f}")
+
+with col2:
+    st.metric("p-Value", f"{p_val:.4f}")
+
+with col3:
+    st.metric("Sample Std Dev", f"{s1:.2f}")
+
+with col4:
+    st.metric("Sample Size", f"{n1}")
+
+# --- SUMMARY CARD ---
+if reject:
+    verdict_text = f"At α = {alpha}, the t-statistic ({t_stat:.2f}) falls in the rejection region (p-value = {p_val:.4f}). We <b>reject the null hypothesis (H₀)</b>."
+else:
+    verdict_text = f"At α = {alpha}, the t-statistic ({t_stat:.2f}) does not fall in the rejection region (p-value = {p_val:.4f}). We <b>fail to reject the null hypothesis (H₀)</b>."
+
+st.markdown(f"""
+    <div class="summary-card">
+        <h4 style="margin-top:0; color:#1E3A8A; font-size:16px;">Prediction Summary</h4>
+        <p style="margin-bottom:0; color:#334155; font-size:14px;">
+            {scenario_desc}<br><br>
+            <b>Result:</b> {verdict_text}
+        </p>
+    </div>
+""", unsafe_allow_html=True)
+
+# --- TABS ---
+tab1, tab2, tab3 = st.tabs(["📈 Distribution Plot", "📝 Mathematical Proof", "⚖️ Decision Errors"])
 
 with tab1:
-    if reject:
-        st.error(f"🔴 **VERDICT: REJECT NULL HYPOTHESIS ($H_0$)** at α = {alpha}")
-    else:
-        st.success(f"🟢 **VERDICT: FAIL TO REJECT NULL HYPOTHESIS ($H_0$)** at α = {alpha}")
-
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Calculated t-Statistic", f"{t_stat:.3f}")
-    col2.metric("p-Value", f"{p_val:.4f}")
-    col3.metric("Significance Level (α)", f"{alpha}")
-    col4.metric("Degrees of Freedom (df)", f"{df}")
-
-    st.subheader("Distribution Curve & Rejection Region")
-    fig, ax = plt.subplots(figsize=(10, 4.5))
+    fig, ax = plt.subplots(figsize=(10, 4))
     x = np.linspace(-4, 4, 1000)
     y = stats.t.pdf(x, df)
-    ax.plot(x, y, label=f"t-distribution (df={df})", color="navy", lw=2)
+    
+    ax.plot(x, y, label=f"t-distribution (df={df})", color="#1E3A8A", lw=2)
 
     if tail_type == "Right-tailed (>)":
-        ax.fill_between(x, 0, y, where=(x >= t_crit_upper), color="red", alpha=0.4, label="Rejection Region")
-        ax.axvline(t_crit_upper, color="red", linestyle="--", lw=1.5, label=f"Critical Value ({t_crit_upper:.3f})")
+        ax.fill_between(x, 0, y, where=(x >= t_crit_upper), color="#DC2626", alpha=0.4, label="Rejection Region")
+        ax.axvline(t_crit_upper, color="#DC2626", linestyle="--", lw=1.5, label=f"Critical Value ({t_crit_upper:.2f})")
     elif tail_type == "Left-tailed (<)":
-        ax.fill_between(x, 0, y, where=(x <= t_crit_lower), color="red", alpha=0.4, label="Rejection Region")
-        ax.axvline(t_crit_lower, color="red", linestyle="--", lw=1.5, label=f"Critical Value ({t_crit_lower:.3f})")
+        ax.fill_between(x, 0, y, where=(x <= t_crit_lower), color="#DC2626", alpha=0.4, label="Rejection Region")
+        ax.axvline(t_crit_lower, color="#DC2626", linestyle="--", lw=1.5, label=f"Critical Value ({t_crit_lower:.2f})")
     else:
-        ax.fill_between(x, 0, y, where=(x >= t_crit_upper) | (x <= t_crit_lower), color="red", alpha=0.4, label="Rejection Region")
-        ax.axvline(t_crit_upper, color="red", linestyle="--", lw=1.5, label=f"Critical Upper ({t_crit_upper:.3f})")
-        ax.axvline(t_crit_lower, color="red", linestyle="--", lw=1.5, label=f"Critical Lower ({t_crit_lower:.3f})")
+        ax.fill_between(x, 0, y, where=(x >= t_crit_upper) | (x <= t_crit_lower), color="#DC2626", alpha=0.4, label="Rejection Region")
+        ax.axvline(t_crit_upper, color="#DC2626", linestyle="--", lw=1.5, label=f"Critical Upper ({t_crit_upper:.2f})")
+        ax.axvline(t_crit_lower, color="#DC2626", linestyle="--", lw=1.5, label=f"Critical Lower ({t_crit_lower:.2f})")
 
-    ax.axvline(t_stat, color="green", linestyle="-", lw=2.5, label=f"Calculated t ({t_stat:.3f})")
-    ax.set_title("Hypothesis Test Visualized", fontsize=12)
+    ax.axvline(t_stat, color="#16A34A", linestyle="-", lw=2.5, label=f"Calculated t ({t_stat:.2f})")
     ax.set_xlabel("t-Score")
     ax.set_ylabel("Probability Density")
     ax.legend(loc="upper right")
-    ax.grid(alpha=0.3)
+    ax.grid(alpha=0.2)
     
     st.pyplot(fig)
 
 with tab2:
-    st.subheader("Mathematical Derivation")
-    
     if test_type == "One-Sample t-Test":
         st.markdown(f"""
         **1. Formulate Hypotheses:**
@@ -243,7 +263,6 @@ with tab2:
         """)
 
 with tab3:
-    st.subheader("Decision Errors Matrix")
     st.table({
         "Reality / Decision": ["H₀ is actually TRUE", "H₀ is actually FALSE"],
         "Fail to Reject H₀": ["Correct Decision (1 - α)", "Type II Error (β) - False Negative"],
